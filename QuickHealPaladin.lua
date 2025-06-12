@@ -10,12 +10,6 @@ function QuickHeal_Paladin_GetRatioHealthyExplanation()
 
     if RatioHealthy >= RatioFull then
         return QUICKHEAL_SPELL_HOLY_LIGHT .. " will never be used in combat. ";
-    else
-        if RatioHealthy > 0 then
-            return QUICKHEAL_SPELL_HOLY_LIGHT .. " will only be used in combat if the target has more than " .. RatioHealthy*100 .. "% life, and only if the healing done is greater than the greatest " .. QUICKHEAL_SPELL_FLASH_OF_LIGHT .. " available. ";
-        else
-            return QUICKHEAL_SPELL_HOLY_LIGHT .. " will only be used in combat if the healing done is greater than the greatest " .. QUICKHEAL_SPELL_FLASH_OF_LIGHT .. " available. ";
-        end
     end
 end
 
@@ -107,12 +101,6 @@ function QuickHeal_Paladin_FindSpellToUse(Target, healType, multiplier, forceMax
     -- Detect proc of 'Hand of Edward the Odd' mace (next spell is instant cast)
     if QuickHeal_DetectBuff('player',"Spell_Holy_SearingLight") then
         debug("BUFF: Hand of Edward the Odd (out of combat healing forced)");
-        InCombat = false;
-    end
-
-    -- Detect proc of 'Holy Judgement" (next Holy Light is fast cast)
-    if QuickHeal_DetectBuff('player',"ability_paladin_judgementblue") then
-        debug("BUFF: Holy Judgement (out of combat healing forced)");
         InCombat = false;
     end
 
