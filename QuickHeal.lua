@@ -2620,119 +2620,176 @@ local function Notification(unit, spellName)
 
 end
 
--- Heals Target with SpellID, no checking on parameters
+-- Return: true/false, plus an optional reason string
+local function QH_IsInRange(spellID, targetUnit)
+  if type(IsSpellInRange) ~= "function" then
+    return true -- no API; don't block
+  end
+  -- SuperWoW lets us pass a UNIT or a GUID transparently
+  local res = IsSpellInRange(spellID, targetUnit)
+  if res == 1 then return true
+  elseif res == 0 then return false, SPELL_FAILED_OUT_OF_RANGE
+  else
+    return true -- -1 = not a single-target check; don't block
+  end
+end
+
+-- Safe LoS probe for friendly spells:
+-- Uses classic cursor targeting test and immediately clears it.
+-- Never submits the target (so it will not fire the spell).
+local function QH_HasLineOfSight(spellID, targetUnit)
+  if type(CastSpell) ~= "function" or type(SpellCanTargetUnit) ~= "function" then
+    return true
+  end
+
+  local wasTargeting = (type(SpellIsTargeting) == "function") and SpellIsTargeting()
+
+  -- Start targeting the actual heal spell (no queue; do not submit)
+  -- Use regular CastSpell to avoid Nampower’s queue semantics for this probe.
+  pcall(CastSpell, spellID, BOOKTYPE_SPELL)
+
+  local can = SpellCanTargetUnit(targetUnit) == 1
+  if type(SpellStopTargeting) == "function" then SpellStopTargeting() end
+
+  -- If something else was targeting before, we leave it cleared on purpose:
+  -- safer than restoring a stale cursor spell.
+  return can
+end
+
+-- Unified preflight: Range + LoS, with QuickHeal-style feedback & blacklist
+local function QH_PreflightChecks(spellID, targetUnit, spellLabel)
+  -- Blacklist check is already enforced at selection time,
+  -- so we just preflight mechanics here.
+
+  -- 1) Range (Nampower/SW aware)
+  local ok, reason = QH_IsInRange(spellID, targetUnit)
+  if not ok then
+    if type(UnitFullName) == "function" and type(Message) == "function" then
+      Message(string.format("%s. %s blacklisted for 5 sec.", SPELL_FAILED_OUT_OF_RANGE, UnitFullName(targetUnit)), "Blacklist", 5)
+    end
+    -- Mirror NewUIErrorsFrame_OnEvent behavior
+    LastBlackListTime = GetTime()
+    BlackList[UnitFullName(targetUnit)] = LastBlackListTime + 5
+    return false
+  end
+
+  -- 2) Line of sight (cursor probe; instant cancel)
+  if not QH_HasLineOfSight(spellID, targetUnit) then
+    if type(UnitFullName) == "function" and type(Message) == "function" then
+      Message(string.format("%s. %s blacklisted for 2 sec.", SPELL_FAILED_LINE_OF_SIGHT, UnitFullName(targetUnit)), "Blacklist", 2)
+    end
+    LastBlackListTime = GetTime()
+    BlackList[UnitFullName(targetUnit)] = LastBlackListTime + 2
+    return false
+  end
+
+  return true
+end
+
+-- Heals Target with SpellID, with pre-cast range/LoS checks
 local function ExecuteHeal(Target, SpellID)
-    local TargetWasChanged = false;
+  local TargetWasChanged = false
 
-    -- Setup the monitor and related events
-    StartMonitor(Target);
+  -- ---- Pre-cast checks (range + line of sight) ----
+  local SpellNameAndRank = QH_LabelForSpellID(SpellID)
+  if not QH_PreflightChecks(SpellID, Target, SpellNameAndRank) then
+    -- Abort before starting monitor; nothing cast.
+    return
+  end
 
-    local SpellNameAndRank = QH_LabelForSpellID(SpellID)
+  -- Setup the monitor and related events
+  StartMonitor(Target)
 
-    -- Clear any pending cursor targeting
-    if type(SpellIsTargeting) == "function" and SpellIsTargeting() then
-        SpellStopTargeting()
+  -- Clear any pending cursor targeting
+  if type(SpellIsTargeting) == "function" and SpellIsTargeting() then
+    SpellStopTargeting()
+  end
+
+  -- === SuperWoW fast path (direct cast to unit/GUID) ===
+  if QH_HasSW() then
+    Notification(Target, SpellNameAndRank)
+    if type(UnitIsUnit) == "function" and UnitIsUnit(Target, "player") then
+      Message(string.format("Casting %s on yourself", SpellNameAndRank), "Healing", 3)
+    else
+      local who = (type(UnitFullName) == "function" and UnitFullName(Target)) or tostring(Target)
+      Message(string.format("Casting %s on %s", SpellNameAndRank, who), "Healing", 3)
     end
+    -- Direct cast (no cursor), using unit token or GUID
+    QH_CastOnUnit(Target, SpellID, SpellNameAndRank)
+    return
+  end
 
-    -- === SuperWoW fast path (direct cast to unit/GUID) ===
-    if QH_HasSW() then
-        Notification(Target, SpellNameAndRank)
-        if type(UnitIsUnit) == "function" and UnitIsUnit(Target, "player") then
-        Message(string.format("Casting %s on yourself", SpellNameAndRank), "Healing", 3)
-        else
-        local who = (type(UnitFullName) == "function" and UnitFullName(Target)) or tostring(Target)
-        Message(string.format("Casting %s on %s", SpellNameAndRank, who), "Healing", 3)
-        end
+  -- ===== Legacy cursor-target fallback (no SuperWoW) =====
 
-        -- Direct cast (no cursor), using unit token or GUID
-        QH_CastOnUnit(Target, SpellID, SpellNameAndRank)
-        return
+  -- Suppress sound from target-switching
+  local OldPlaySound = PlaySound; PlaySound = function() end
+
+  -- If the current target is healable, take special measures
+  if UnitIsHealable('target') then
+    -- If healing target is targettarget change current healable target to targettarget
+    if Target == 'targettarget' then
+      local old = UnitFullName('target')
+      TargetUnit('targettarget')
+      Target = 'target'
+      TargetWasChanged = true
+      QuickHeal_debug("Healable target preventing healing, temporarily switching target to target's target", old, '-->', UnitFullName('target'))
     end
-
-    -- Supress sound from target-switching
-    local OldPlaySound = PlaySound;
-    PlaySound = function()
+    -- If healing target is not the current healable target clear the healable target
+    if not (Target == 'target') then
+      QuickHeal_debug("Healable target preventing healing, temporarily clearing target", UnitFullName('target'))
+      ClearTarget()
+      TargetWasChanged = true
     end
+  end
 
-    -- If the current target is healable, take special measures
-    if UnitIsHealable('target') then
-        -- If the healing target is targettarget change current healable target to targettarget
-        if Target == 'targettarget' then
-            local old = UnitFullName('target');
-            TargetUnit('targettarget');
-            Target = 'target';
-            TargetWasChanged = true;
-            QuickHeal_debug("Healable target preventing healing, temporarily switching target to target's target", old, '-->', UnitFullName('target'));
-        end
-        -- If healing target is not the current healable target clear the healable target
-        if not (Target == 'target') then
-            QuickHeal_debug("Healable target preventing healing, temporarily clearing target", UnitFullName('target'));
-            ClearTarget();
-            TargetWasChanged = true;
-        end
+  -- Cast the spell and announce if we can target it
+  CastSpell(SpellID, BOOKTYPE_SPELL)
+
+  if SpellCanTargetUnit(Target) == 1 or ((Target == 'target') and HealingTarget) then
+    Notification(Target, SpellNameAndRank)
+    if UnitIsUnit(Target, 'player') then
+      Message(string.format("Casting %s on yourself", SpellNameAndRank), "Healing", 3)
+    else
+      Message(string.format("Casting %s on %s", SpellNameAndRank, UnitFullName(Target)), "Healing", 3)
     end
+  end
 
-    -- Get spell info
-    local SpellName, SpellRank = GetSpellName(SpellID, BOOKTYPE_SPELL);
-    if SpellRank == "" then
-        SpellRank = nil
-    end
-    local SpellNameAndRank = SpellName .. (SpellRank and " (" .. SpellRank .. ")" or "");
+  -- Submit target
+  SpellTargetUnit(Target)
 
-    QuickHeal_debug("  Casting: " .. SpellNameAndRank .. " on " .. UnitFullName(Target) .. " (" .. Target .. ")" .. ", ID: " .. SpellID);
+  -- Safety: if still targeting, abort cleanly
+  if type(SpellIsTargeting) == "function" and SpellIsTargeting() then
+    StopMonitor("Spell cannot target " .. (UnitFullName(Target) or "unit"))
+    SpellStopTargeting()
+  end
 
-    -- Clear any pending spells
-    if SpellIsTargeting() then
-        SpellStopTargeting()
-    end
+  -- Reacquire previous target if we changed it
+  if TargetWasChanged then
+    local old = UnitFullName('target') or "None"
+    TargetLastTarget()
+    QuickHeal_debug("Reacquired previous target", old, '-->', UnitFullName('target'))
+  end
 
-    -- Cast the spell
-    CastSpell(SpellID, BOOKTYPE_SPELL);
-
-    -- The spell is awaiting target selection, write to screen if the spell can actually be cast
-    if SpellCanTargetUnit(Target) or ((Target == 'target') and HealingTarget) then
-
-        Notification(Target, SpellNameAndRank);
-
-        -- Write to center of screen
-        if UnitIsUnit(Target, 'player') then
-            Message(string.format("Casting %s on yourself", SpellNameAndRank), "Healing", 3)
-        else
-            Message(string.format("Casting %s on %s", SpellNameAndRank, UnitFullName(Target)), "Healing", 3)
-        end
-    end
-
-    -- Assign the target of the healing spell
-    SpellTargetUnit(Target);
-
-    -- just in case something went wrong here (Healing people in duels!)
-    if SpellIsTargeting() then
-        StopMonitor("Spell cannot target " .. (UnitFullName(Target) or "unit"));
-        SpellStopTargeting()
-    end
-
-    -- Reacquire target if it was changed earlier
-    if TargetWasChanged then
-        local old = UnitFullName('target') or "None";
-        TargetLastTarget();
-        QuickHeal_debug("Reacquired previous target", old, '-->', UnitFullName('target'));
-    end
-
-    -- Enable sound again
-    PlaySound = OldPlaySound;
+  -- Restore sound
+  PlaySound = OldPlaySound
 end
 
 function ExecuteHOT(Target, SpellID)
   local TargetWasChanged = false
+  local SpellNameAndRank = QH_LabelForSpellID(SpellID)
+
+  -- ---- Pre-cast checks (range + line of sight) ----
+  if not QH_PreflightChecks(SpellID, Target, SpellNameAndRank) then
+    return
+  end
 
   if type(StartMonitor) == "function" then StartMonitor(Target) end
-
-  local SpellNameAndRank = QH_LabelForSpellID(SpellID)
 
   if type(SpellIsTargeting) == "function" and SpellIsTargeting() then
     SpellStopTargeting()
   end
 
+  -- SuperWoW direct-cast fast path
   if QH_HasSW() then
     if type(Notification) == "function" then Notification(Target, SpellNameAndRank) end
     if type(UnitIsUnit) == "function" and UnitIsUnit(Target, "player") then
@@ -2745,62 +2802,25 @@ function ExecuteHOT(Target, SpellID)
         Message(string.format("Casting %s on %s", SpellNameAndRank, who), "Healing", 3)
       end
     end
-
     QH_CastOnUnit(Target, SpellID, SpellNameAndRank)
     return
   end
 
-  -- Legacy path preserved exactly as before (sound suppress optional)
-  local OldPlaySound = PlaySound
-  PlaySound = function() end
-
-  if type(UnitIsHealable) == "function" and UnitIsHealable('target') then
-    if Target == 'targettarget' then
-      if type(TargetUnit) == "function" then
-        TargetUnit('targettarget')
-        Target = 'target'
-        TargetWasChanged = true
-      end
-    end
-    if Target ~= 'target' then
-      if type(ClearTarget) == "function" then
-        ClearTarget()
-        TargetWasChanged = true
-      end
-    end
-  end
-
+  -- Legacy cursor-target fallback
   CastSpell(SpellID, BOOKTYPE_SPELL)
-
-  if (type(SpellCanTargetUnit) == "function" and SpellCanTargetUnit(Target)) or (Target == 'target' and HealingTarget) then
+  if SpellCanTargetUnit(Target) == 1 then
     if type(Notification) == "function" then Notification(Target, SpellNameAndRank) end
-    if type(UnitIsUnit) == "function" and UnitIsUnit(Target, 'player') then
-      if type(Message) == "function" then
-        Message(string.format("Casting %s on yourself", SpellNameAndRank), "Healing", 3)
-      end
+    if type(UnitIsUnit) == "function" and UnitIsUnit(Target, "player") then
+      if type(Message) == "function" then Message(string.format("Casting %s on yourself", SpellNameAndRank), "Healing", 3) end
     else
-      local who = (type(UnitFullName) == "function" and UnitFullName(Target)) or "target"
-      if type(Message) == "function" then
-        Message(string.format("Casting %s on %s", SpellNameAndRank, who), "Healing", 3)
-      end
+      if type(Message) == "function" then Message(string.format("Casting %s on %s", SpellNameAndRank, UnitFullName(Target)), "Healing", 3) end
     end
   end
-
   SpellTargetUnit(Target)
-
   if type(SpellIsTargeting) == "function" and SpellIsTargeting() then
-    if type(StopMonitor) == "function" then
-      local who = (type(UnitFullName) == "function" and UnitFullName(Target)) or tostring(Target)
-      StopMonitor("Spell cannot target " .. who)
-    end
+    StopMonitor("Spell cannot target " .. (UnitFullName(Target) or "unit"))
     SpellStopTargeting()
   end
-
-  if TargetWasChanged and type(TargetLastTarget) == "function" then
-    TargetLastTarget()
-  end
-
-  PlaySound = OldPlaySound
 end
 
 -- Heals the specified Target with the specified Spell
