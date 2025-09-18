@@ -58,7 +58,7 @@ function QuickHeal_Paladin_FindSpellToUse(Target, healType, multiplier, forceMax
     local healneed;
     local Health;
 
-    if QuickHeal_UnitHasHealthInfo(Target) and UnitHealthMax(Target) > 0 then
+    if QuickHeal_UnitHasHealthInfo(Target) then
         -- Full info available
         healneed = UnitHealthMax(Target) - UnitHealth(Target); -- Here you can integrate HealComm by adding "- HealComm:getHeal(UnitName(Target))" (this can autocancel your heals even when you don't want)
         if Overheal then
@@ -143,7 +143,7 @@ function QuickHeal_Paladin_FindSpellToUse(Target, healType, multiplier, forceMax
         local K = 0.8; -- k for fast spells (FL) and K for slow spells (HL)            3 = 4 | 3 < 4 | 3 > 4
     end
 
-    if not forceMaxHPS or not InCombat then
+    if not forceMaxHPS then
         if Health < RatioFull then
             if maxRankFL >=1                                                                                                                      and SpellIDsFL[1] then SpellID = SpellIDsFL[1]; HealSize = (67+healMod15)*hlMod else SpellID = SpellIDsHL[1]; HealSize = (43+healMod25*PF1)*hlMod end -- Default to rank 1 of FL or HL
             if healneed     > ( 83+healMod25*PF6)*hlMod*K and ManaLeft >= 60  and maxRankHL >=2 and (TargetIsHealthy and maxRankFL <= 1 or NoFL) and SpellIDsHL[2] then SpellID = SpellIDsHL[2]; HealSize =  (83+healMod25*PF6)*hlMod  end
@@ -651,15 +651,6 @@ function QuickHeal_Command_Paladin(msg)
     writeLine("/qh reset - Reset configuration to default parameters for all classes.");
 end
 
- ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
--- extend by Drokin
--- MELEE PALADIN HEALING functions.  Currently in beta.
--- The following functions give paladins that choose to heal in melee additional tools to automate Holy Strike and Holy Shock.
--- /run qhHStrike(93,3);  -- Smart Holy Stike function, 1st number is the min %healing threshold to trigger, the 2nd number is the # of targets needed under threshold (DEFAULT set at 93% threshold on 3 targets)
--- /run qhHShock(85); -- Smart Holy Shock function, number is the min % healing threshold to trigger (DEFAULT is set to 85%)
-
--- Define CastHolyStrike as a global function
 function qhHStrike(HSminHP,HSminTargets)
     -- Get the count of players meeting the conditions
     local playersInRange = GetPlayersBelowHealthThresholdInRange(HSminHP);
