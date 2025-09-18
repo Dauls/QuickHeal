@@ -1,3 +1,6 @@
+local has_pepo_nam = pcall(GetCVar, "NP_QueueCastTimeSpells")
+local has_sw = type(SUPERWOW_VERSION) == "string"
+
 local function writeLine(s,r,g,b)
     if DEFAULT_CHAT_FRAME then
         DEFAULT_CHAT_FRAME:AddMessage(s, r or 1, g or 1, b or 0.5)
@@ -666,13 +669,26 @@ end
 -- Define HealWithHolyShock as a global function
 function qhHShock(SHOCKminHP)
     -- Find the lowest health unit and its health percentage
-    local target, healthPct = GetLowestHealthUnit();
+    local target, guid, healthPct = GetLowestHealthUnit();
+    local castTarget = target
+    local spellLabel = "Holy Shock"
+    if has_sw and guid and not UnitIsUnit(target, "player") then
+            castTarget = guid
+    end
+    if type(IsSpellInRange) == "function" then
+        local inRange = IsSpellInRange(spellLabel, castTarget)
+        if inRange == 0 then return end
+    end
 
-    -- Cast Holy Shock only if target exists and their health is below the threshold
-    if target and healthPct < SHOCKminHP then
-        CastSpellByName("Holy Shock", target);
-        -- Uncomment the next line if you want a chat message when Holy Shock is cast for debugging
-        -- DEFAULT_CHAT_FRAME:AddMessage("Holy Shock cast on: " .. UnitName(target) .. " (Health: " .. string.format("%.1f", healthPct) .. "%)");     else if target then DEFAULT_CHAT_FRAME:AddMessage("Target " .. UnitName(target) .. " has health above " .. SHOCKminHP .. "%. No Holy Shock cast."); else DEFAULT_CHAT_FRAME:AddMessage("No valid target found for Holy Shock."); end
+    if castTarget and healthPct < SHOCKminHP then
+        if type(CastSpellByNameNoQueue) == "function" then
+            CastSpellByNameNoQueue(spellLabel, castTarget)
+        else
+        -- Cast Holy Shock only if target exists and their health is below the threshold
+            CastSpellByName("Holy Shock", castTarget);
+    -- Uncomment the next line if you want a chat message when Holy Shock is cast for debugging
+    -- DEFAULT_CHAT_FRAME:AddMessage("Holy Shock cast on: " .. UnitName(target) .. " (Health: " .. string.format("%.1f", healthPct) .. "%)");     else if target then DEFAULT_CHAT_FRAME:AddMessage("Target " .. UnitName(target) .. " has health above " .. SHOCKminHP .. "%. No Holy Shock cast."); else DEFAULT_CHAT_FRAME:AddMessage("No valid target found for Holy Shock."); end
+        end
     end
 end
 
@@ -728,7 +744,16 @@ end
 function GetLowestHealthUnit()
     -- Finds the unit with the lowest health percentage
     local lowestUnit = nil;
+    local lowestGuid = nil;
     local lowestHealthPct = 100;
+
+    if UnitExists("target") and UnitIsFriend("player","target") and UnitIsConnected("target") and not UnitIsDeadOrGhost("target") and UnitIsVisible("target") then
+        local maxhp = UnitHealthMax("target");
+            local healthPct = ((UnitHealth("target")) / maxhp) * 100
+            lowestUnit, lowestHealthPct = "target", healthPct
+            local _, guid = UnitExists("target"); lowestGuid = guid
+    end
+
 
     -- Check all raid members if in raid
     if GetNumRaidMembers() > 0 then
@@ -739,6 +764,8 @@ function GetLowestHealthUnit()
                 if healthPct < lowestHealthPct then
                     lowestUnit = unit;
                     lowestHealthPct = healthPct;
+                    local _, guid = UnitExists(unit)
+                    lowestGuid = guid
                 end
             end
         end
@@ -757,12 +784,14 @@ function GetLowestHealthUnit()
                 if healthPct < lowestHealthPct then
                     lowestUnit = unit;
                     lowestHealthPct = healthPct;
+                    local _, guid = UnitExists(unit)
+                    lowestGuid = guid
                 end
             end
         end
     end
 
-    return lowestUnit, lowestHealthPct; -- Return both unit and health percentage
+    return lowestUnit, lowestGuid, lowestHealthPct; -- Return both unit and health percentage
 end
 
 
