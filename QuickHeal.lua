@@ -1,4 +1,4 @@
-QuickHeal = AceLibrary("AceAddon-2.0"):new("AceConsole-2.0", "AceEvent-2.0")
+aQuickHeal = AceLibrary("AceAddon-2.0"):new("AceConsole-2.0", "AceEvent-2.0")
 
 -- other libs ----------------------------------------------------------------------------------
 HealComm = AceLibrary("HealComm-1.0")
@@ -1525,7 +1525,7 @@ local function ModifierScan(unit, idx, tab, debuff)
     if not iconPath then return false end
 
     -- Extract icon token (e.g. "Spell_Holy_Renew") from full texture path.
-    local token = string.match(iconPath, "Interface\\Icons\\(.+)")
+    local token = string.find(iconPath, "Interface\\Icons\\(.+)")
     if not token then
         -- Unknown/odd texture format: treat as no (de)buff that affects healing.
         return 1
