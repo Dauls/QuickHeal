@@ -67,7 +67,6 @@ local DQHV = { -- Default values
 }
 
 local has_pepo_nam = pcall(GetCVar, "NP_QueueCastTimeSpells")
-local has_sw = type(SUPERWOW_VERSION) == "string"
 
 local me = UnitName('player')
 local TWA_Roster = { };
@@ -1701,7 +1700,7 @@ local function UnitIsHealable(unit, explain)
         if EvaluateUnitCondition(unit, UnitIsFriend('player', unit), "is not a friend", explain) then
             return false
         end
-        if EvaluateUnitCondition(unit, UnitIsEnemy(unit, 'player'), "is an enemy", explain) then
+        if EvaluateUnitCondition(unit, not UnitIsEnemy(unit, 'player'), "is an enemy", explain) then
             return false
         end
         if EvaluateUnitCondition(unit, not UnitCanAttack('player', unit), "can be attacked by player", explain) then
@@ -1909,41 +1908,11 @@ local function HasRejuvRank1()
     return false; -- Rejuvenation (Rank 1) not found
 end
 
-local function _CastSpell(spellID, spellbookType, targetUnit)
-    if has_sw then
+local function _CastSpell(spellID, spellbookType)
+    if has_pepo_nam then
         local spellname, spellrank = GetSpellName(spellID, BOOKTYPE_SPELL);
         local spell = spellname .. "("..spellrank .. ")";
-        local castTarget = targetUnit
-        if type(UnitIsUnit) == "function" and UnitIsUnit(targetUnit, "player") then
-            castTarget = "player"
-        else
-            if type(UnitExists) == "function" then
-                local exists, guid = UnitExists(targetUnit)  -- SW: returns guid as 2nd
-                if exists and guid then castTarget = guid end
-            end
-        end
-        if has_pepo_nam then
-            if type(IsSpellInRange) == "function" and targetUnit then
-                if IsSpellInRange(spellID, castTarget) == 1 then
-                    CastSpellByNameNoQueue(spell, castTarget)
-                elseif IsSpellInRange(spellID,castTarget) == 0 then
-                    QuickHeal_debug(UnitFullName(targetUnit) .. " (" .. unit .. ")", "is out of range");
-                    return SPELL_FAILED_OUT_OF_RANGE
-                end
-            end
-        else
-            CastSpellByName(spell, castTarget)
-        end
-    elseif has_pepo_nam and not has_sw then
-        local spellname, spellrank = GetSpellName(spellID, BOOKTYPE_SPELL);
-        local spell = spellname .. "("..spellrank .. ")";
-        local castTarget = targetUnit
-        if IsSpellInRange(spell, castTarget) == 1 then
-            CastSpellByNameNoQueue(spell, castTarget);
-        elseif IsSpellInRange(spell, castTarget) == 0 then
-            QuickHeal_debug(UnitFullName(targetUnit) .. " (" .. unit .. ")", "is out of range");
-            return SPELL_FAILED_OUT_OF_RANGE
-        end
+        CastSpellByNameNoQueue(spell);
     else
         CastSpell(spellID, spellbookType);
     end
@@ -2145,7 +2114,7 @@ local function FindWhoToHeal(Restrict, extParam)
                     --writeLine("Values for "..UnitName(unit)..":")
                     --writeLine("Health: "..UnitHealth(unit) / UnitHealthMax(unit).." | IncHeal: "..IncHeal / UnitHealthMax(unit).." | PredictedHealthPct: "..PredictedHealthPct) --Edelete
                 else
-                    QuickHeal_debug(UnitFullName(unit) .. " (" .. unit .. ")", "is LOS or unhealable");
+                    QuickHeal_debug(UnitFullName(unit) .. " (" .. unit .. ")", "is out-of-range or unhealable");
                 end
             else
                 QuickHeal_debug(UnitFullName(unit) .. " (" .. unit .. ")", "is blacklisted");
@@ -2175,7 +2144,7 @@ local function FindWhoToHeal(Restrict, extParam)
                             end
                         end
                     else
-                        QuickHeal_debug(UnitFullName(unit) .. " (" .. unit .. ")", "is LOS or unhealable");
+                        QuickHeal_debug(UnitFullName(unit) .. " (" .. unit .. ")", "is out-of-range or unhealable");
                     end
                 else
                     QuickHeal_debug(UnitFullName(unit) .. " (" .. unit .. ")", "is blacklisted");
