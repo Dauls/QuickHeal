@@ -65,7 +65,7 @@ function QuickHeal_Paladin_FindSpellToUse(Target, healType, multiplier, forceMax
         end
         Health = UnitHealth(Target) / UnitHealthMax(Target);
     else
-        -- Estimate target health
+        -- Estimate target heal
         healneed = QuickHeal_EstimateUnitHealNeed(Target,true); -- needs HealComm implementation maybe
         if Overheal then
             healneed = healneed * multiplier;
@@ -119,7 +119,6 @@ function QuickHeal_Paladin_FindSpellToUse(Target, healType, multiplier, forceMax
     healneed = healneed/HDB;
 
     -- Get a list of ranks available of 'Flash of Light' and 'Holy Light'
-    local SpellIDsHL = GetSpellIDs(QUICKHEAL_SPELL_HOLY_LIGHT);
     local SpellIDsFL = GetSpellIDs(QUICKHEAL_SPELL_FLASH_OF_LIGHT);
     local maxRankHL = table.getn(SpellIDsHL);
     local maxRankFL = table.getn(SpellIDsFL);
@@ -236,11 +235,6 @@ function QuickHeal_Paladin_FindHealSpellToUseNoTarget(maxhealth, healDeficit, he
         InCombat = false;
     end
 
-    -- Detect proc of 'Holy Judgement" (next Holy Light is fast cast)
-    if QuickHeal_DetectBuff('player',"ability_paladin_judgementblue") then
-        debug("BUFF: Holy Judgement (out of combat healing forced)");
-        InCombat = false;
-    end
 
     -- Get total healing modifier (factor) caused by healing target debuffs
     --local HDB = QuickHeal_GetHealModifier(Target);
@@ -249,7 +243,6 @@ function QuickHeal_Paladin_FindHealSpellToUseNoTarget(maxhealth, healDeficit, he
 
 
     -- Get a list of ranks available of 'Flash of Light' and 'Holy Light'
-    local SpellIDsHL = GetSpellIDs(QUICKHEAL_SPELL_HOLY_LIGHT);
     local SpellIDsFL = GetSpellIDs(QUICKHEAL_SPELL_FLASH_OF_LIGHT);
     local maxRankHL = table.getn(SpellIDsHL);
     local maxRankFL = table.getn(SpellIDsFL);
@@ -371,7 +364,6 @@ function QuickHeal_Paladin_FindHoTSpellToUse(Target, healType, forceMaxRank)
     healneed = healneed/HDB;
 
     -- Get a list of ranks available of 'Flash of Light' and 'Holy Light' and 'Holy Shock'
-    local SpellIDsHL = GetSpellIDs(QUICKHEAL_SPELL_HOLY_LIGHT);
     local SpellIDsFL = GetSpellIDs(QUICKHEAL_SPELL_FLASH_OF_LIGHT);
     local SpellIDsHS = GetSpellIDs(QUICKHEAL_SPELL_HOLY_SHOCK);
     local maxRankHL = table.getn(SpellIDsHL);
@@ -476,7 +468,6 @@ function QuickHeal_Paladin_FindHoTSpellToUseNoTarget(maxhealth, healDeficit, hea
     healneed = healneed/HDB;
 
     -- Get a list of ranks available of 'Flash of Light' and 'Holy Light' and 'Holy Shock'
-    local SpellIDsHL = GetSpellIDs(QUICKHEAL_SPELL_HOLY_LIGHT);
     local SpellIDsFL = GetSpellIDs(QUICKHEAL_SPELL_FLASH_OF_LIGHT);
     local SpellIDsHS = GetSpellIDs(QUICKHEAL_SPELL_HOLY_SHOCK);
     local maxRankHL = table.getn(SpellIDsHL);
@@ -762,6 +753,7 @@ function GetLowestHealthUnit()
 
     return lowestUnit, lowestHealthPct; -- Return both unit and health percentage
 end
+
 
 
 
