@@ -13,9 +13,6 @@ function QuickHeal_Paladin_GetRatioHealthyExplanation()
     else
         if RatioHealthy > 0 then
             return QUICKHEAL_SPELL_HOLY_LIGHT .. " will only be used in combat if the target has more than " .. RatioHealthy*100 .. "% life, and only if the healing done is greater than the greatest " .. QUICKHEAL_SPELL_FLASH_OF_LIGHT .. " available. ";
-        else
-            return QUICKHEAL_SPELL_HOLY_LIGHT .. " will only be used in combat if the healing done is greater than the greatest " .. QUICKHEAL_SPELL_FLASH_OF_LIGHT .. " available. ";
-        end
     end
 end
 
@@ -765,6 +762,7 @@ function GetLowestHealthUnit()
 
     return lowestUnit, lowestHealthPct; -- Return both unit and health percentage
 end
+
 
 
 
